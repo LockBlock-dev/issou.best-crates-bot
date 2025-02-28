@@ -1,0 +1,23 @@
+{
+    "name": "issou.best-crates-bot",
+    "description": "Claim your issou.best crates daily.",
+    "version": "2.0.0",
+    "private": true,
+    "author": "LockBlock-dev",
+    "license": "AGPL-3.0-or-later",
+    "scripts": {
+        "start": "node dist/main.js",
+        "build": "tsc"
+    },
+    "dependencies": {
+        "cookie": "^1.0.2",
+        "dotenv": "^16.4.7",
+        "simple-discord-webhooks": "^2.1.0",
+        "undici": "^7.4.0"
+    },
+    "devDependencies": {
+        "@types/node": "^22.13.5",
+        "discord-api-types": "^0.37.119",
+        "typescript": "^5.8.2"
+    }
+}
