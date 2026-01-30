@@ -4,6 +4,13 @@ services:
             context: .
             target: build
         container_name: account-bot
+        environment:
+            USERNAME: ${USERNAME:?error}
+            PASSWORD: ${PASSWORD:?error}
+            DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:?error}
+            TIMEOUT: ${TIMEOUT:-300}
+            LOGIN_RETRY_MAX: ${LOGIN_RETRY_MAX:-2}
+            LOGIN_RETRY_DELAY: ${LOGIN_RETRY_DELAY:-3}
         network_mode: "service:gluetun"
         restart: unless-stopped
 
