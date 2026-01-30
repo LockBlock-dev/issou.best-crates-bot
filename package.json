@@ -10,14 +10,14 @@
         "build": "tsc"
     },
     "dependencies": {
-        "cookie": "^1.0.2",
-        "dotenv": "^16.4.7",
+        "cookie": "^1.1.1",
+        "dotenv": "^16.6.1",
         "simple-discord-webhooks": "^2.1.0",
-        "undici": "^7.4.0"
+        "undici": "^7.19.2"
     },
     "devDependencies": {
-        "@types/node": "^22.13.5",
-        "discord-api-types": "^0.37.119",
-        "typescript": "^5.8.2"
+        "@types/node": "^22.19.7",
+        "discord-api-types": "^0.37.120",
+        "typescript": "^5.9.3"
     }
 }
