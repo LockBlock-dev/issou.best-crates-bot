@@ -7,7 +7,7 @@ import {
     AccountError,
     AccountNotLoggedInError,
 } from "./errors";
-import type { AccountInfo, ClaimedCrate, Crates } from "./types";
+import type { AccountInfo, APIResponse, ClaimedCrate, Crates } from "./types";
 
 class AccountClient {
     private url: string;
@@ -52,7 +52,7 @@ class AccountClient {
 
         this.http.setHeader("Cookie", `connect.sid=${this.connectSid}`);
 
-        return this.connectSid;
+        return this.connectSid!;
     }
 
     public async getAccountInfo() {
@@ -117,6 +117,30 @@ class AccountClient {
         }
 
         return (await resp.json()) as ClaimedCrate;
+    }
+
+    public async sendCredits(amount: number, recipient: string) {
+        if (!this.connectSid) throw new AccountNotLoggedInError();
+
+        const resp = await this.http.post({
+            path: "/credits/send",
+            body: {
+                credits: amount.toString(10),
+                recipient,
+            },
+        });
+
+        if (!resp.ok) {
+            if (resp.status === 401) throw new AccountNotLoggedInError();
+            else
+                throw new AccountError(
+                    `Could not send ${amount} credits to ${recipient}: ${
+                        new HttpError(resp).message
+                    }`,
+                );
+        }
+
+        return (await resp.json()) as APIResponse;
     }
 }
 

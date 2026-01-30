@@ -89,3 +89,7 @@ export type Crates = Array<Crate>;
 export interface ClaimedCrate {
     earned: number;
 }
+
+export interface APIResponse {
+    code: number;
+}
