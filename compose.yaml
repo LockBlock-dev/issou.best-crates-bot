@@ -2,7 +2,6 @@ services:
     bot:
         build:
             context: .
-            target: build
         container_name: account-bot
         environment:
             USERNAME: ${USERNAME:?error}

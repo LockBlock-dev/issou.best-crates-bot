@@ -54,6 +54,8 @@ class BotClient {
     }
 
     public async run() {
+        console.log(`Welcome ${process.env.USERNAME!}!`);
+
         try {
             while (true) {
                 const embed = structuredClone(BASE_EMBED);
