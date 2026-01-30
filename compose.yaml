@@ -1,0 +1,29 @@
+services:
+    bot:
+        build:
+            context: .
+            target: build
+        container_name: account-bot
+        network_mode: "service:gluetun"
+        restart: unless-stopped
+
+    gluetun:
+        cap_add:
+            - NET_ADMIN
+        devices:
+            - /dev/net/tun:/dev/net/tun
+        environment:
+            TZ: Europe/Paris
+            VPN_SERVICE_PROVIDER: protonvpn
+            VPN_TYPE: wireguard
+            WIREGUARD_PRIVATE_KEY: ${PROTONVPN_PRIVATE_KEY:?error}
+            SERVER_COUNTRIES: Netherlands,Canada,Japan,Norway,Singapore,Switzerland,Poland,Romania,Mexico,United States
+            FREE_ONLY: on
+            UPDATER_PERIOD: 72h
+        image: ghcr.io/qdm12/gluetun:v3.41
+        restart: unless-stopped
+        volumes:
+            - gluetun_data:/gluetun
+
+volumes:
+    gluetun_data:
