@@ -1,23 +1,23 @@
 export class AccountError extends Error {
-    constructor(message?: string) {
-        super(message);
+  constructor(message?: string) {
+    super(message);
 
-        this.name = "AccountError";
-    }
+    this.name = "AccountError";
+  }
 }
 
 export class AccountNotLoggedInError extends Error {
-    constructor() {
-        super();
+  constructor() {
+    super();
 
-        this.name = "AccountNotLoggedInError";
-    }
+    this.name = "AccountNotLoggedInError";
+  }
 }
 
 export class AccountCrateClaimError extends Error {
-    constructor(crateName: string) {
-        super(`The crate ${crateName} is invalid/was already claimed!`);
+  constructor(crateName: string) {
+    super(`The crate ${crateName} is invalid/was already claimed!`);
 
-        this.name = "AccountCrateClaimError";
-    }
+    this.name = "AccountCrateClaimError";
+  }
 }

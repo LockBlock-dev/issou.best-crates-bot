@@ -1,147 +1,163 @@
-import { Webhook } from "simple-discord-webhooks";
-import type { APIEmbed } from "discord-api-types/v10";
-
 import { AccountClient, AccountNotLoggedInError } from "../account";
+import { Webhook } from "../webhook";
 import { BASE_EMBED, LOGIN_RETRY_DELAY, MAX_RETRY, TIMEOUT } from "./constants";
-
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+import Logger from "./logger";
 
 class BotClient {
-    private accountClient: AccountClient;
-    private username: string;
-    private password: string;
-    private postman: Webhook;
+  private accountClient: AccountClient;
+  private postman?: Webhook;
+  private running = true;
 
-    constructor(username: string, password: string, webhookUrl: string | URL) {
-        this.username = username;
-        this.password = password;
+  constructor(webhookUrl?: string | URL, accountClient?: AccountClient) {
+    this.accountClient = accountClient ?? new AccountClient();
 
-        this.postman = new Webhook(
-            webhookUrl instanceof URL ? webhookUrl : new URL(webhookUrl),
-        );
-        this.accountClient = new AccountClient();
+    if (webhookUrl) this.postman = new Webhook(webhookUrl);
+
+    const shutdown = () => {
+      Logger.log("Shutting down...");
+      this.running = false;
+    };
+
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+  }
+
+  /**
+   * Returns a promise that resolves after the given milliseconds.
+   */
+  private static delay(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Sends an error embed to the webhook if configured.
+   */
+  private async sendErrorEmbed(
+    embed: ReturnType<typeof structuredClone<typeof BASE_EMBED>>,
+    msg: string,
+  ) {
+    if (!this.postman) return;
+
+    try {
+      embed.title = "Bad news!";
+      embed.color = 0xed1c24;
+      embed.fields!.push({ name: "Error", value: msg });
+      await this.postman.send("", [embed]);
+    } catch (e) {
+      Logger.err(`Failed to send error webhook: ${e}`);
+    }
+  }
+
+  /**
+   * Attempts to log in with retries on failure.
+   */
+  public async loginWithRetries(username: string, password: string) {
+    for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
+      try {
+        await this.accountClient.login(username, password);
+
+        Logger.log("Login successful!");
+
+        return;
+      } catch (e) {
+        Logger.err(`Login attempt ${attempt} failed: ${e}`);
+
+        if (attempt < MAX_RETRY) await BotClient.delay(LOGIN_RETRY_DELAY);
+      }
     }
 
-    public static log(msg: string) {
-        console.log(`${new Date().toISOString()}: ${msg}`);
-    }
+    throw new Error("Maximum login attempts exceeded.");
+  }
 
-    public static err(err: unknown) {
-        console.error(`${new Date().toISOString()}:`, err);
-    }
+  /**
+   * Runs the bot's main loop, claiming crates and sending notifications.
+   */
+  public async run(username: string, password: string) {
+    Logger.log(`Welcome ${username}!`);
 
-    public async loginWithRetries() {
-        let attempts = 0;
+    if (!this.postman) Logger.warn("No webhook configured, notifications will be skipped.");
 
-        while (attempts < MAX_RETRY) {
-            try {
-                await this.accountClient.login(this.username, this.password);
-
-                BotClient.log("Login successful!");
-
-                return;
-            } catch (e) {
-                BotClient.err(`Login attempt ${attempts + 1} failed: ${e}`);
-
-                attempts++;
-
-                if (attempts >= MAX_RETRY)
-                    throw new Error("Maximum login attempts exceeded.");
-            }
-
-            await delay(LOGIN_RETRY_DELAY);
-        }
-    }
-
-    public async run() {
-        console.log(`Welcome ${process.env.USERNAME!}!`);
+    try {
+      while (this.running) {
+        const embed = structuredClone(BASE_EMBED);
+        let timeout = TIMEOUT;
 
         try {
-            while (true) {
-                const embed = structuredClone(BASE_EMBED);
+          const crates = await this.accountClient.getCrates();
+          const availableCrates = (await this.accountClient.getAccountInfo()).crates;
 
-                try {
-                    let timeout = TIMEOUT;
-                    const crates = await this.accountClient.getCrates();
-                    const availableCrates = (
-                        await this.accountClient.getAccountInfo()
-                    ).crates;
+          for (const crate of availableCrates) {
+            const crateData = crates.find((c) => c.name === crate.crateName);
 
-                    for (const crate of availableCrates) {
-                        const crateData = crates.filter(
-                            (c) => c.name == crate.crateName,
-                        )[0];
-                        const nextClaimDate =
-                            new Date(crate.lastClaimTime).getTime() +
-                            crateData.every * 1000; // every is in seconds
-
-                        if (Date.now() > nextClaimDate) {
-                            const claim = await this.accountClient.claimCrate(
-                                crateData.name,
-                            );
-                            timeout = crateData.every * 1000;
-
-                            embed.fields!.push({
-                                name: `Crate \`${crateData.name}\``,
-                                value: `+${claim.earned} e-sous`,
-                            });
-
-                            BotClient.log(
-                                `Opened '${crateData.name}' => +${claim.earned} e-sous`,
-                            );
-                        } else {
-                            timeout = nextClaimDate - Date.now();
-                        }
-                    }
-
-                    if (embed.fields!.length > 0) {
-                        await this.postman.send("", [embed]);
-                        BotClient.log("Embed sent successfully.");
-                    } else {
-                        BotClient.log("No crates claimed, nothing to send.");
-                    }
-
-                    BotClient.log(
-                        `Waiting ${Math.floor(
-                            timeout / 1000 / 3600,
-                        )} hours until next claim..`,
-                    );
-
-                    await delay(timeout);
-                } catch (e) {
-                    if (e instanceof AccountNotLoggedInError) {
-                        BotClient.err(
-                            "Session expired, attempting to re-login...",
-                        );
-
-                        try {
-                            await this.loginWithRetries();
-                            BotClient.log(
-                                "Re-login successful. Resuming fetch...",
-                            );
-                            continue;
-                        } catch (reLoginError) {
-                            BotClient.err(`Re-login failed: ${reLoginError}`);
-                            break;
-                        }
-                    } else {
-                        BotClient.err(e);
-
-                        embed.title = "Bad news!";
-                        embed.color = 0xed1c24;
-                        embed.fields!.push({ name: "Error", value: `${e}` });
-
-                        await this.postman.send("", [embed]);
-                    }
-
-                    await delay(TIMEOUT);
-                }
+            if (!crateData) {
+              Logger.warn(`Crate '${crate.crateName}' not found, skipping.`);
+              continue;
             }
+
+            const nextClaimDate = new Date(crate.lastClaimTime).getTime() + crateData.every * 1000; // every is in seconds
+
+            if (Date.now() > nextClaimDate) {
+              const claim = await this.accountClient.claimCrate(crateData.name);
+              timeout = crateData.every * 1000;
+
+              embed.fields!.push({
+                name: `Crate \`${crateData.name}\``,
+                value: `+${claim.earned} e-sous`,
+              });
+
+              Logger.log(`Opened '${crateData.name}' => +${claim.earned} e-sous`);
+            } else {
+              timeout = nextClaimDate - Date.now();
+            }
+          }
+
+          if (embed.fields!.length > 0) {
+            Logger.log(`Claimed ${embed.fields!.length} crate(s).`);
+
+            if (this.postman) {
+              try {
+                await this.postman.send("", [embed]);
+                Logger.log("Embed sent successfully.");
+              } catch (e) {
+                Logger.err(`Failed to send webhook: ${e}`);
+              }
+            }
+          } else {
+            Logger.log("No crates claimed, nothing to send.");
+          }
+
+          const minutes = Math.floor(timeout / 1000 / 60);
+          Logger.log(`Waiting ${minutes} minutes until next claim..`);
+
+          await BotClient.delay(timeout);
         } catch (e) {
-            BotClient.err(`Critical failure: ${e}`);
-            process.exit(1);
+          if (e instanceof AccountNotLoggedInError) {
+            Logger.err("Session expired, attempting to re-login...");
+
+            try {
+              await this.loginWithRetries(username, password);
+              Logger.log("Re-login successful. Resuming fetch...");
+              continue;
+            } catch (reLoginError) {
+              Logger.err(`Re-login failed: ${reLoginError}`);
+              await this.sendErrorEmbed(embed, `${reLoginError}`);
+              break;
+            }
+          } else {
+            Logger.err(e);
+            await this.sendErrorEmbed(embed, `${e}`);
+          }
+
+          await BotClient.delay(timeout);
         }
+      }
+    } catch (e) {
+      Logger.err(`Critical failure: ${e}`);
+      process.exit(1);
     }
+
+    Logger.log("Bot stopped.");
+  }
 }
 
 export default BotClient;

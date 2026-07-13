@@ -1,147 +1,116 @@
-import * as cookie from "cookie";
+import { HttpClient, HttpCookieJar } from "http-lib";
 
-import { HttpClient, HttpError } from "../http";
 import { API_URL, USER_AGENT } from "./constants";
-import {
-    AccountCrateClaimError,
-    AccountError,
-    AccountNotLoggedInError,
-} from "./errors";
+import { AccountError, AccountNotLoggedInError } from "./errors";
 import type { AccountInfo, APIResponse, ClaimedCrate, Crates } from "./types";
 
 class AccountClient {
-    private url: string;
-    private http: HttpClient;
-    private connectSid?: string;
+  private cookieJar: HttpCookieJar;
+  private http: HttpClient;
+  private connectSid?: string;
 
-    constructor() {
-        this.url = API_URL;
+  constructor() {
+    this.cookieJar = new HttpCookieJar();
 
-        this.http = new HttpClient(this.url, {
-            "User-Agent": USER_AGENT,
-        });
-    }
+    this.http = new HttpClient(API_URL, {
+      cookieJar: this.cookieJar,
+      headers: {
+        "User-Agent": USER_AGENT,
+      },
+    });
+  }
 
-    public async login(username: string, password: string) {
-        const resp = await this.http.post({
-            path: "/auth/login",
-            body: {
-                username,
-                password,
-            },
-        });
+  /**
+   * Logs in a user with the given credentials.
+   */
+  public async login(username: string, password: string) {
+    (
+      await this.http.post({
+        path: "/auth/login",
+        body: {
+          username,
+          password,
+        },
+      })
+    ).assertOk();
 
-        const setCookie = resp.headers["set-cookie"];
+    this.connectSid = this.cookieJar.getCookie("connect.sid");
 
-        if (!setCookie)
-            throw new AccountError("Could not get connect.sid cookie!");
+    if (!this.connectSid) throw new AccountError("Could not get connect.sid cookie!");
 
-        const maybeConnectSid = (
-            Array.isArray(setCookie) ? setCookie : [setCookie]
-        ).find((c) => c.startsWith("connect.sid"));
+    return this.connectSid!;
+  }
 
-        if (!maybeConnectSid)
-            throw new AccountError("Could not get connect.sid cookie!");
+  /**
+   * Retrieves account information for the currently logged-in user.
+   */
+  public async getAccountInfo() {
+    if (!this.connectSid) throw new AccountNotLoggedInError();
 
-        const { "connect.sid": connectSid } = cookie.parse(maybeConnectSid);
+    const body = await (
+      await this.http.get({
+        path: "/auth/info",
+      })
+    )
+      .assertOk()
+      .tryJson<AccountInfo>();
 
-        if (!connectSid)
-            throw new AccountError("Could not get connect.sid cookie!");
+    if (!body?.isSignedIn) throw new AccountNotLoggedInError();
 
-        this.connectSid = connectSid;
+    return body;
+  }
 
-        this.http.setHeader("Cookie", `connect.sid=${this.connectSid}`);
+  /**
+   * Fetches the list of crates owned by the user.
+   */
+  public async getCrates() {
+    if (!this.connectSid) throw new AccountNotLoggedInError();
 
-        return this.connectSid!;
-    }
+    return await (
+      await this.http.get({
+        path: "/crates",
+      })
+    )
+      .assertOk()
+      .json<Crates>();
+  }
 
-    public async getAccountInfo() {
-        if (!this.connectSid) throw new AccountNotLoggedInError();
+  /**
+   * Claims a crate by name for the user.
+   */
+  public async claimCrate(crateName: string) {
+    if (!this.connectSid) throw new AccountNotLoggedInError();
 
-        const resp = await this.http.get({
-            path: "/auth/info",
-        });
+    return await (
+      await this.http.post({
+        path: "/crates/claim",
+        body: {
+          crate: crateName,
+        },
+      })
+    )
+      .assertOk()
+      .json<ClaimedCrate>();
+  }
 
-        if (!resp.ok)
-            throw new AccountError(
-                `Could not GET your account info: ${
-                    new HttpError(resp).message
-                }`,
-            );
+  /**
+   * Sends credits from the user's account to a recipient.
+   */
+  public async sendCredits(amount: number, recipient: string) {
+    if (!this.connectSid) throw new AccountNotLoggedInError();
 
-        const body = (await resp.json()) as AccountInfo;
-
-        if (!body.isSignedIn) throw new AccountNotLoggedInError();
-
-        return body;
-    }
-
-    public async getCrates() {
-        if (!this.connectSid) throw new AccountNotLoggedInError();
-
-        const resp = await this.http.get({
-            path: "/crates",
-        });
-
-        if (!resp.ok) {
-            if (resp.status === 401) throw new AccountNotLoggedInError();
-            else
-                throw new AccountError(
-                    `Could not GET your crates: ${new HttpError(resp).message}`,
-                );
-        }
-
-        return (await resp.json()) as Crates;
-    }
-
-    public async claimCrate(crateName: string) {
-        if (!this.connectSid) throw new AccountNotLoggedInError();
-
-        const resp = await this.http.post({
-            path: "/crates/claim",
-            body: {
-                crate: crateName,
-            },
-        });
-
-        if (!resp.ok) {
-            if (resp.status === 401) throw new AccountNotLoggedInError();
-            else if (resp.status === 403)
-                throw new AccountCrateClaimError(crateName);
-            else
-                throw new AccountError(
-                    `Could not claim the crate ${crateName}: ${
-                        new HttpError(resp).message
-                    }`,
-                );
-        }
-
-        return (await resp.json()) as ClaimedCrate;
-    }
-
-    public async sendCredits(amount: number, recipient: string) {
-        if (!this.connectSid) throw new AccountNotLoggedInError();
-
-        const resp = await this.http.post({
-            path: "/credits/send",
-            body: {
-                credits: amount.toString(10),
-                recipient,
-            },
-        });
-
-        if (!resp.ok) {
-            if (resp.status === 401) throw new AccountNotLoggedInError();
-            else
-                throw new AccountError(
-                    `Could not send ${amount} credits to ${recipient}: ${
-                        new HttpError(resp).message
-                    }`,
-                );
-        }
-
-        return (await resp.json()) as APIResponse;
-    }
+    return await (
+      await this.http.post({
+        path: "/credits/send",
+        body: {
+          credits: amount.toString(10),
+          recipient,
+        },
+      })
+    )
+      .assertOk()
+      .json<APIResponse>();
+  }
 }
 
 export default AccountClient;

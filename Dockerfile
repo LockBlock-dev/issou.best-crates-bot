@@ -1,27 +1,24 @@
-ARG NODE_VERSION=20
-
-FROM node:${NODE_VERSION}-slim AS build
+FROM oven/bun:alpine AS build
 
 WORKDIR /app
 
-COPY ./src ./src
-COPY package*.json ./
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
+
 COPY tsconfig.json .
+COPY ./src ./src
 
-RUN set -eux; \
-    npm install; \
-    npm run build
-
+RUN bun run build
 
 
-FROM node:${NODE_VERSION}-slim
+
+FROM oven/bun:alpine
 
 WORKDIR /app
 
-COPY package*.json ./
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile --production
+
 COPY --from=build /app/dist ./dist
 
-RUN set -eux; \
-    npm install --omit=dev
-
-CMD ["npm", "start"]
+CMD ["bun", "dist/main.js"]

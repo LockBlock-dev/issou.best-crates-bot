@@ -1,15 +1,59 @@
 # issou.best crates bot
 
-Claim your issou.best crates daily.
+Automatically claim your daily crates on [account.issou.best](https://account.issou.best/) and get results posted to a Discord webhook.
 
-## Description
+## Setup
 
-This project is a bot designed to automate the process of claiming daily crates on [account.issou.best](https://account.issou.best/) and post the results to a Discord webhook.
+Create a `.env` file with the following variables:
 
-## Docker and Gluetun
+```env
+USERNAME=your_username
+PASSWORD=your_password
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+```
 
-This project supports deployment using Docker and Docker Compose. It is designed to work seamlessly with [Gluetun](https://github.com/qdm12/gluetun), a VPN client container, to hide your real IP.
+Optional variables:
+
+| Variable            | Default | Description                  |
+| ------------------- | ------- | ---------------------------- |
+| `TIMEOUT`           | `300`   | Seconds between claim cycles |
+| `LOGIN_RETRY_MAX`   | `2`     | Max login retry attempts     |
+| `LOGIN_RETRY_DELAY` | `3`     | Seconds between retries      |
+| `TZ`                | `UTC`   | Timezone                     |
+
+## Run
+
+### Node / Bun
+
+```sh
+bun install
+bun run build
+bun start
+```
+
+### Docker
+
+```sh
+docker compose up -d
+```
+
+### Docker with Gluetun VPN
+
+Additional environment variables are required for VPN configuration:
+
+| Variable                | Default                  | Description         |
+| ----------------------- | ------------------------ | ------------------- |
+| `PROTONVPN_PRIVATE_KEY` |                          | WireGuard key       |
+| `VPN_SERVICE_PROVIDER`  | `protonvpn`              | VPN provider        |
+| `VPN_TYPE`              | `wireguard`              | VPN protocol        |
+| `SERVER_COUNTRIES`      | `Netherlands,Canada,...` | VPN server countries|
+| `FREE_ONLY`             | `on`                     | Free servers only   |
+| `UPDATER_PERIOD`        | `72h`                    | Server list refresh |
+
+```sh
+docker compose -f compose.gluetun.yaml up -d
+```
 
 ## License
 
-This project is licensed under the [AGPL-3.0-or-later license](./LICENSE).
+[AGPL-3.0-or-later](./LICENSE)
