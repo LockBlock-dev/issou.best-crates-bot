@@ -1,17 +1,19 @@
 import { AccountClient, AccountNotLoggedInError } from "../account";
-import { Webhook } from "../webhook";
-import { BASE_EMBED, LOGIN_RETRY_DELAY, MAX_RETRY, TIMEOUT } from "./constants";
+import CrateClaimer from "./claimer";
+import { ENV } from "./env";
 import Logger from "./logger";
+import Notifier from "./notifier";
 
 class BotClient {
   private accountClient: AccountClient;
-  private postman?: Webhook;
+  private claimer: CrateClaimer;
+  private notifier: Notifier;
   private running = true;
 
   constructor(webhookUrl?: string | URL, accountClient?: AccountClient) {
     this.accountClient = accountClient ?? new AccountClient();
-
-    if (webhookUrl) this.postman = new Webhook(webhookUrl);
+    this.claimer = new CrateClaimer(this.accountClient);
+    this.notifier = new Notifier(webhookUrl);
 
     const shutdown = () => {
       Logger.log("Shutting down...");
@@ -30,29 +32,10 @@ class BotClient {
   }
 
   /**
-   * Sends an error embed to the webhook if configured.
-   */
-  private async sendErrorEmbed(
-    embed: ReturnType<typeof structuredClone<typeof BASE_EMBED>>,
-    msg: string,
-  ) {
-    if (!this.postman) return;
-
-    try {
-      embed.title = "Bad news!";
-      embed.color = 0xed1c24;
-      embed.fields!.push({ name: "Error", value: msg });
-      await this.postman.send("", [embed]);
-    } catch (e) {
-      Logger.err(`Failed to send error webhook: ${e}`);
-    }
-  }
-
-  /**
    * Attempts to log in with retries on failure.
    */
-  public async loginWithRetries(username: string, password: string) {
-    for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
+  private async loginWithRetries(username: string, password: string) {
+    for (let attempt = 1; attempt <= ENV.LOGIN_RETRY_MAX; attempt++) {
       try {
         await this.accountClient.login(username, password);
 
@@ -62,11 +45,27 @@ class BotClient {
       } catch (e) {
         Logger.err(`Login attempt ${attempt} failed: ${e}`);
 
-        if (attempt < MAX_RETRY) await BotClient.delay(LOGIN_RETRY_DELAY);
+        if (attempt < ENV.LOGIN_RETRY_MAX) await BotClient.delay(ENV.LOGIN_RETRY_DELAY);
       }
     }
 
     throw new Error("Maximum login attempts exceeded.");
+  }
+
+  /**
+   * Attempts to re-login after session expiry. Returns true on success.
+   */
+  private async handleSessionExpired(username: string, password: string) {
+    try {
+      await this.loginWithRetries(username, password);
+      Logger.log("Re-login successful. Resuming fetch...");
+      return true;
+    } catch (reLoginError) {
+      Logger.err(`Re-login failed: ${reLoginError}`);
+      await this.notifier.sendError(`${reLoginError}`);
+    }
+
+    return false;
   }
 
   /**
@@ -75,85 +74,39 @@ class BotClient {
   public async run(username: string, password: string) {
     Logger.log(`Welcome ${username}!`);
 
-    if (!this.postman) Logger.warn("No webhook configured, notifications will be skipped.");
+    if (!this.notifier.available)
+      Logger.warn("No webhook configured, notifications will be skipped.");
 
-    try {
-      while (this.running) {
-        const embed = structuredClone(BASE_EMBED);
-        let timeout = TIMEOUT;
+    while (this.running) {
+      let timeout = ENV.TIMEOUT;
 
-        try {
-          const crates = await this.accountClient.getCrates();
-          const availableCrates = (await this.accountClient.getAccountInfo()).crates;
+      try {
+        const { claimed, nextTimeout } = await this.claimer.claimAvailable();
 
-          for (const crate of availableCrates) {
-            const crateData = crates.find((c) => c.name === crate.crateName);
+        timeout = nextTimeout;
 
-            if (!crateData) {
-              Logger.warn(`Crate '${crate.crateName}' not found, skipping.`);
-              continue;
-            }
-
-            const nextClaimDate = new Date(crate.lastClaimTime).getTime() + crateData.every * 1000; // every is in seconds
-
-            if (Date.now() > nextClaimDate) {
-              const claim = await this.accountClient.claimCrate(crateData.name);
-              timeout = crateData.every * 1000;
-
-              embed.fields!.push({
-                name: `Crate \`${crateData.name}\``,
-                value: `+${claim.earned} e-sous`,
-              });
-
-              Logger.log(`Opened '${crateData.name}' => +${claim.earned} e-sous`);
-            } else {
-              timeout = nextClaimDate - Date.now();
-            }
-          }
-
-          if (embed.fields!.length > 0) {
-            Logger.log(`Claimed ${embed.fields!.length} crate(s).`);
-
-            if (this.postman) {
-              try {
-                await this.postman.send("", [embed]);
-                Logger.log("Embed sent successfully.");
-              } catch (e) {
-                Logger.err(`Failed to send webhook: ${e}`);
-              }
-            }
-          } else {
-            Logger.log("No crates claimed, nothing to send.");
-          }
-
-          const minutes = Math.floor(timeout / 1000 / 60);
-          Logger.log(`Waiting ${minutes} minutes until next claim..`);
-
-          await BotClient.delay(timeout);
-        } catch (e) {
-          if (e instanceof AccountNotLoggedInError) {
-            Logger.err("Session expired, attempting to re-login...");
-
-            try {
-              await this.loginWithRetries(username, password);
-              Logger.log("Re-login successful. Resuming fetch...");
-              continue;
-            } catch (reLoginError) {
-              Logger.err(`Re-login failed: ${reLoginError}`);
-              await this.sendErrorEmbed(embed, `${reLoginError}`);
-              break;
-            }
-          } else {
-            Logger.err(e);
-            await this.sendErrorEmbed(embed, `${e}`);
-          }
-
-          await BotClient.delay(timeout);
+        if (claimed.length > 0) {
+          Logger.log(`Claimed ${claimed.length} crate(s).`);
+          await this.notifier.sendResults(claimed);
+        } else {
+          Logger.log("No crates claimed, nothing to send.");
         }
+      } catch (e) {
+        if (e instanceof AccountNotLoggedInError) {
+          Logger.err("Session expired, attempting to re-login...");
+          if (await this.handleSessionExpired(username, password)) continue;
+
+          break;
+        }
+
+        Logger.err(e);
+        await this.notifier.sendError(`${e}`);
       }
-    } catch (e) {
-      Logger.err(`Critical failure: ${e}`);
-      process.exit(1);
+
+      const minutes = Math.floor(timeout / 1000 / 60);
+      Logger.log(`Waiting ${minutes} minutes until next claim..`);
+
+      await BotClient.delay(timeout);
     }
 
     Logger.log("Bot stopped.");

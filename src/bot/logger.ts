@@ -1,9 +1,11 @@
+import { ENV } from "./env";
+
 export default class Logger {
   /**
    * Returns a formatted timestamp using the configured timezone.
    */
   private static timestamp() {
-    return new Date().toLocaleString("sv-SE", { timeZone: process.env.TZ });
+    return new Date().toLocaleString("sv-SE", { timeZone: ENV.TZ });
   }
 
   /**

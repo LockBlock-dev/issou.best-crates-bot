@@ -1,6 +1,6 @@
 {
     "name": "issou.best-crates-bot",
-    "version": "2.2.0",
+    "version": "2.3.0",
     "private": true,
     "description": "Claim your issou.best crates daily.",
     "license": "AGPL-3.0-or-later",

@@ -1,11 +1,13 @@
 import "dotenv/config";
-import { BotClient } from "./bot";
+import { BotClient, ENV, Logger } from "./bot";
 
 const main = async () => {
-  await new BotClient(process.env.DISCORD_WEBHOOK_URL).run(
-    process.env.USERNAME!,
-    process.env.PASSWORD!,
-  );
+  try {
+    await new BotClient(ENV.DISCORD_WEBHOOK_URL).run(ENV.USERNAME, ENV.PASSWORD);
+  } catch (e) {
+    Logger.err(`Critical failure: ${e}`);
+    process.exitCode = 1;
+  }
 };
 
-main();
+await main();
