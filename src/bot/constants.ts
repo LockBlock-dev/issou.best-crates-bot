@@ -1,4 +1,4 @@
-import { type APIEmbed } from "discord-api-types/v10";
+import type { APIEmbed } from "discord-api-types/v10";
 
 /**
  * The base embed template used for Discord messages.

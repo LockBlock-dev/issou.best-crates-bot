@@ -26,7 +26,7 @@ class AccountClient {
   public async login(username: string, password: string) {
     (
       await this.http.post({
-        path: "/auth/login",
+        path: "auth/login",
         body: {
           username,
           password,
@@ -49,7 +49,7 @@ class AccountClient {
 
     const body = await (
       await this.http.get({
-        path: "/auth/info",
+        path: "auth/info",
       })
     )
       .assertOk()
@@ -68,7 +68,7 @@ class AccountClient {
 
     return await (
       await this.http.get({
-        path: "/crates",
+        path: "crates",
       })
     )
       .assertOk()
@@ -83,7 +83,7 @@ class AccountClient {
 
     return await (
       await this.http.post({
-        path: "/crates/claim",
+        path: "crates/claim",
         body: {
           crate: crateName,
         },
@@ -101,7 +101,7 @@ class AccountClient {
 
     return await (
       await this.http.post({
-        path: "/credits/send",
+        path: "credits/send",
         body: {
           credits: amount.toString(10),
           recipient,

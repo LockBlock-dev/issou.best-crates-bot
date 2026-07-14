@@ -1,5 +1,4 @@
 import type { AccountClient } from "../account";
-import { ENV } from "./env";
 import Logger from "./logger";
 import type { ClaimedEntry, ClaimResult } from "./types";
 
@@ -18,7 +17,7 @@ class CrateClaimer {
     const availableCrates = (await this.accountClient.getAccountInfo()).crates;
 
     const claimed: Array<ClaimedEntry> = [];
-    let nextTimeout = ENV.TIMEOUT;
+    let nextTimeout = Infinity;
 
     for (const crate of availableCrates) {
       const crateData = crates.find((c) => c.name === crate.crateName);

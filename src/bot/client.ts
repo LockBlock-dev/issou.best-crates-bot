@@ -8,7 +8,7 @@ class BotClient {
   private accountClient: AccountClient;
   private claimer: CrateClaimer;
   private notifier: Notifier;
-  private running = true;
+  private abort = new AbortController();
 
   constructor(webhookUrl?: string | URL, accountClient?: AccountClient) {
     this.accountClient = accountClient ?? new AccountClient();
@@ -16,8 +16,9 @@ class BotClient {
     this.notifier = new Notifier(webhookUrl);
 
     const shutdown = () => {
+      if (this.abort.signal.aborted) return;
       Logger.log("Shutting down...");
-      this.running = false;
+      this.abort.abort();
     };
 
     process.on("SIGINT", shutdown);
@@ -25,10 +26,16 @@ class BotClient {
   }
 
   /**
-   * Returns a promise that resolves after the given milliseconds.
+   * Returns a promise that resolves after the given milliseconds, or rejects if aborted.
    */
-  private static delay(ms: number) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  private delay(ms: number) {
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(resolve, ms);
+      this.abort.signal.addEventListener("abort", () => {
+        clearTimeout(timer);
+        reject(this.abort.signal.reason);
+      });
+    });
   }
 
   /**
@@ -36,6 +43,8 @@ class BotClient {
    */
   private async loginWithRetries(username: string, password: string) {
     for (let attempt = 1; attempt <= ENV.LOGIN_RETRY_MAX; attempt++) {
+      this.abort.signal.throwIfAborted();
+
       try {
         await this.accountClient.login(username, password);
 
@@ -43,9 +52,11 @@ class BotClient {
 
         return;
       } catch (e) {
+        if (this.abort.signal.aborted) throw e;
+
         Logger.err(`Login attempt ${attempt} failed: ${e}`);
 
-        if (attempt < ENV.LOGIN_RETRY_MAX) await BotClient.delay(ENV.LOGIN_RETRY_DELAY);
+        if (attempt < ENV.LOGIN_RETRY_MAX) await this.delay(ENV.LOGIN_RETRY_DELAY);
       }
     }
 
@@ -77,36 +88,40 @@ class BotClient {
     if (!this.notifier.available)
       Logger.warn("No webhook configured, notifications will be skipped.");
 
-    while (this.running) {
-      let timeout = ENV.TIMEOUT;
+    try {
+      while (true) {
+        let timeout = ENV.TIMEOUT;
 
-      try {
-        const { claimed, nextTimeout } = await this.claimer.claimAvailable();
+        try {
+          const { claimed, nextTimeout } = await this.claimer.claimAvailable();
 
-        timeout = nextTimeout;
+          timeout = nextTimeout < Infinity ? Math.max(ENV.TIMEOUT, nextTimeout) : ENV.TIMEOUT;
 
-        if (claimed.length > 0) {
-          Logger.log(`Claimed ${claimed.length} crate(s).`);
-          await this.notifier.sendResults(claimed);
-        } else {
-          Logger.log("No crates claimed, nothing to send.");
+          if (claimed.length > 0) {
+            Logger.log(`Claimed ${claimed.length} crate(s).`);
+            await this.notifier.sendResults(claimed);
+          } else {
+            Logger.log("No crates claimed, nothing to send.");
+          }
+        } catch (e) {
+          if (e instanceof AccountNotLoggedInError) {
+            Logger.err("Session expired, attempting to re-login...");
+            if (await this.handleSessionExpired(username, password)) continue;
+
+            break;
+          }
+
+          Logger.err(e);
+          await this.notifier.sendError(`${e}`);
         }
-      } catch (e) {
-        if (e instanceof AccountNotLoggedInError) {
-          Logger.err("Session expired, attempting to re-login...");
-          if (await this.handleSessionExpired(username, password)) continue;
 
-          break;
-        }
+        const minutes = Math.floor(timeout / 1000 / 60);
+        Logger.log(`Waiting ${minutes} minutes until next claim..`);
 
-        Logger.err(e);
-        await this.notifier.sendError(`${e}`);
+        await this.delay(timeout);
       }
-
-      const minutes = Math.floor(timeout / 1000 / 60);
-      Logger.log(`Waiting ${minutes} minutes until next claim..`);
-
-      await BotClient.delay(timeout);
+    } catch {
+      // aborted by shutdown signal
     }
 
     Logger.log("Bot stopped.");

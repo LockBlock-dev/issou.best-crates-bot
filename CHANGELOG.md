@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.2] - 2026-07-14
+
+### Fixed
+
+- Fixed HTTP paths dropping the base URL path segment.
+- Fixed `TIMEOUT` being used as a claim delay instead of a minimum floor between claim attempts.
+- Fixed abort errors during login retries not propagating immediately.
+
 ## [2.3.1] - 2026-07-14
 
 ### Fixed
