@@ -9,6 +9,12 @@ services:
             PASSWORD: ${PASSWORD:?error}
             DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
             TIMEOUT: ${TIMEOUT:-300}
-            LOGIN_RETRY_MAX: ${LOGIN_RETRY_MAX:-2}
+            LOGIN_RETRY_MAX: ${LOGIN_RETRY_MAX:-3}
             LOGIN_RETRY_DELAY: ${LOGIN_RETRY_DELAY:-3}
+            COOKIE_FILE: /app/data/cookies.json
+        volumes:
+            - bot_data:/app/data
         restart: unless-stopped
+
+volumes:
+    bot_data:

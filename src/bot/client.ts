@@ -11,7 +11,7 @@ class BotClient {
   private abort = new AbortController();
 
   constructor(webhookUrl?: string | URL, accountClient?: AccountClient) {
-    this.accountClient = accountClient ?? new AccountClient();
+    this.accountClient = accountClient ?? new AccountClient(ENV.COOKIE_FILE);
     this.claimer = new CrateClaimer(this.accountClient);
     this.notifier = new Notifier(webhookUrl);
 
@@ -87,6 +87,8 @@ class BotClient {
 
     if (!this.notifier.available)
       Logger.warn("No webhook configured, notifications will be skipped.");
+
+    await this.accountClient.loadCookies();
 
     try {
       while (true) {

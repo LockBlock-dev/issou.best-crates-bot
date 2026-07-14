@@ -14,12 +14,13 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 
 Optional variables:
 
-| Variable            | Default | Description                  |
-| ------------------- | ------- | ---------------------------- |
-| `TIMEOUT`           | `300`   | Seconds between claim cycles |
-| `LOGIN_RETRY_MAX`   | `2`     | Max login retry attempts     |
-| `LOGIN_RETRY_DELAY` | `3`     | Seconds between retries      |
-| `TZ`                | `UTC`   | Timezone                     |
+| Variable            | Default | Description                                          |
+| ------------------- | ------- | ---------------------------------------------------- |
+| `TIMEOUT`           | `300`   | Minimum seconds between claim cycles                 |
+| `LOGIN_RETRY_MAX`   | `3`     | Max login retry attempts                             |
+| `LOGIN_RETRY_DELAY` | `3`     | Seconds between retries                              |
+| `COOKIE_FILE`       |         | Path to the cookie persistence file                  |
+| `TZ`                | `UTC`   | Timezone                                             |
 
 ## Run
 

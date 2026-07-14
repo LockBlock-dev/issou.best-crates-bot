@@ -3,15 +3,21 @@ services:
         build:
             context: .
         container_name: account-bot
+        depends_on:
+            gluetun:
+                condition: service_started
         environment:
             TZ: ${TZ:-UTC}
             USERNAME: ${USERNAME:?error}
             PASSWORD: ${PASSWORD:?error}
             DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
             TIMEOUT: ${TIMEOUT:-300}
-            LOGIN_RETRY_MAX: ${LOGIN_RETRY_MAX:-2}
+            LOGIN_RETRY_MAX: ${LOGIN_RETRY_MAX:-3}
             LOGIN_RETRY_DELAY: ${LOGIN_RETRY_DELAY:-3}
+            COOKIE_FILE: /app/data/cookies.json
         network_mode: "service:gluetun"
+        volumes:
+            - bot_data:/app/data
         restart: unless-stopped
 
     gluetun:
@@ -33,4 +39,5 @@ services:
             - gluetun_data:/gluetun
 
 volumes:
+    bot_data:
     gluetun_data:

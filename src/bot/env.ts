@@ -89,4 +89,6 @@ export const ENV = {
   LOGIN_RETRY_MAX: env("LOGIN_RETRY_MAX").optionalInt(3),
   /** Delay in milliseconds between login retry attempts. */
   LOGIN_RETRY_DELAY: env("LOGIN_RETRY_DELAY").optionalInt(3) * 1000,
+  /** Path to the cookie persistence file. */
+  COOKIE_FILE: process.env.COOKIE_FILE,
 } as const;
